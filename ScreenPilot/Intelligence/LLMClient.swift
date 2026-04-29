@@ -11,6 +11,7 @@ actor LLMClient {
         let image: CGImage
         let systemPrompt: String
         let contextHistory: [String]
+        let recentNudges: [ContextWindow.NudgeEntry]
         let model: String
     }
 
@@ -34,9 +35,26 @@ actor LLMClient {
 
         let base64Image = try encodeImage(request.image)
 
-        let contextText = request.contextHistory.isEmpty
-            ? "No recent context."
-            : "Recent context:\n" + request.contextHistory.joined(separator: "\n")
+        var contextParts: [String] = []
+
+        if !request.contextHistory.isEmpty {
+            contextParts.append("Recent activity:\n" + request.contextHistory.joined(separator: "\n"))
+        }
+
+        if !request.recentNudges.isEmpty {
+            var nudgeLines: [String] = []
+            let nudges = request.recentNudges
+            for (index, nudge) in nudges.enumerated().reversed() {
+                if index == nudges.count - 1 {
+                    nudgeLines.append("- \(nudge.title): \(nudge.body)")
+                } else {
+                    nudgeLines.append("- \(nudge.title)")
+                }
+            }
+            contextParts.append("Recent suggestions already shown to user (DO NOT repeat these topics):\n" + nudgeLines.joined(separator: "\n"))
+        }
+
+        let contextText = contextParts.isEmpty ? "No recent context." : contextParts.joined(separator: "\n\n")
 
         let body: [String: Any] = [
             "model": request.model,

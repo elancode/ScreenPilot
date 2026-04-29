@@ -25,11 +25,14 @@ enum AnalysisPrompts {
     - You can generate a useful draft for them
     - Include a complete, copy-pasteable draft in the body
 
-    Use "none" ONLY when:
+    Use "none" when:
     - The screen content is truly trivial (e.g., desktop wallpaper, app launcher)
-    - You genuinely have zero insight to offer
+    - You genuinely have zero new insight to offer
+    - Your best observation would repeat a topic from "Recent suggestions already shown to user"
 
-    Lean toward generating a nudge. The user wants proactive insights — when in doubt, share your observation. A short, interesting observation is better than silence.
+    IMPORTANT: If recent suggestions are listed in the context, do NOT repeat the same topic, even if rephrased. Each nudge must offer a genuinely different insight. If you cannot find a new angle, respond with nudge_type "none". Variety is more valuable than volume.
+
+    Lean toward generating a nudge when you have a fresh insight. A short, interesting observation is better than silence — but a repeated observation is worse than silence.
 
     Respond ONLY with the JSON, no other text.
     """

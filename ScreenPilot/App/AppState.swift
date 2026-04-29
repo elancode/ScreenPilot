@@ -29,7 +29,6 @@ final class AppState {
 
     func addNudge(_ nudge: Nudge, screenshot: CGImage? = nil) {
         if let last = nudges.first, isSimilar(nudge, last) {
-            // Skip duplicate nudge
             return
         }
         nudges.insert(nudge, at: 0)

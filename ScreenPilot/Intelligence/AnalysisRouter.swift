@@ -14,12 +14,14 @@ actor AnalysisRouter {
 
     func analyze(image: CGImage, appName: String, windowTitle: String) async -> AnalysisResult? {
         let contextHistory = await contextWindow.recentEntries(count: 10)
+        let recentNudges = await contextWindow.recentNudges(count: 10)
         let model = await MainActor.run { appState.selectedModel }
 
         let request = LLMClient.AnalysisRequest(
             image: image,
             systemPrompt: AnalysisPrompts.combined,
             contextHistory: contextHistory,
+            recentNudges: recentNudges,
             model: model
         )
 
@@ -39,6 +41,10 @@ actor AnalysisRouter {
                 windowTitle: windowTitle,
                 summary: parsed.activitySummary
             ))
+
+            if let nudge = parsed.nudge {
+                await contextWindow.appendNudge(title: nudge.title, body: nudge.body)
+            }
 
             return AnalysisResult(
                 activitySummary: parsed.activitySummary,
