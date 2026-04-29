@@ -46,7 +46,7 @@ actor AnalysisRouter {
             )
         } catch {
             print("[ScreenPilot] Analysis error: \(error.localizedDescription)")
-            return nil
+            return AnalysisResult(activitySummary: "", nudge: nil, error: error.localizedDescription)
         }
     }
 

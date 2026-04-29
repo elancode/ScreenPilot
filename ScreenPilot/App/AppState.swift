@@ -10,7 +10,7 @@ final class AppState {
     var currentActivity: String?
     var apiCallsToday: Int = 0
     var dailyBudgetLimit: Int = 500
-    var selectedModel: String = "claude-sonnet-4-20250514"
+    var selectedModel: String = "claude-sonnet-4-6"
     var customBlocklist: Set<String> = []
 
     // Follow-up query state
@@ -18,6 +18,7 @@ final class AppState {
     var followUps: [Int64: [FollowUp]] = [:]
     var queryingNudgeId: Int64?
     var queryErrors: [Int64: String] = [:]
+    var lastAPIError: String?
 
     /// Set by AppDelegate to wire up the analysis router
     var queryHandler: ((CGImage, Nudge, [FollowUp], String) async throws -> String)?

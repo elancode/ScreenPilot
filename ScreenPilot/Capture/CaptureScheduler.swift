@@ -1,5 +1,8 @@
 import Foundation
 import CoreGraphics
+import os.log
+
+private let logger = Logger(subsystem: "com.screenpilot", category: "CaptureScheduler")
 
 @Observable
 @MainActor
@@ -23,6 +26,7 @@ final class CaptureScheduler {
     private var consecutiveNothingCount: Int = 0
     private var lastAppContext: String?
     private var schedulerTask: Task<Void, Never>?
+    private var lastResetDay: Int = Calendar.current.component(.day, from: .now)
 
     // Configuration
     private let idleTimeout: TimeInterval = 120      // 2 minutes
@@ -57,7 +61,7 @@ final class CaptureScheduler {
 
     func start() {
         guard schedulerTask == nil else { return }
-        print("[ScreenPilot] CaptureScheduler started")
+        logger.info("CaptureScheduler started")
         state = .active
         schedulerTask = Task { [weak self] in
             await self?.runLoop()
@@ -82,7 +86,9 @@ final class CaptureScheduler {
             }
 
             // Check idle
-            if inputMonitor.secondsSinceLastInput > idleTimeout {
+            let idleSeconds = inputMonitor.secondsSinceLastInput
+            if idleSeconds > idleTimeout {
+                logger.debug("Skipping: user idle for \(idleSeconds, format: .fixed(precision: 0))s")
                 state = .idle
                 try? await Task.sleep(for: .seconds(1))
                 continue
@@ -92,18 +98,33 @@ final class CaptureScheduler {
 
             // Check blocklist
             if isBlocklisted(windowTracker.currentBundleId) {
+                let bundleId = self.windowTracker.currentBundleId
+                logger.debug("Skipping: blocklisted app \(bundleId)")
                 try? await Task.sleep(for: .seconds(1))
                 continue
             }
 
+            // Reset daily counter at midnight
+            let today = Calendar.current.component(.day, from: .now)
+            if today != lastResetDay {
+                lastResetDay = today
+                appState.resetDailyCounter()
+                logger.info("Daily counter reset")
+            }
+
             // Check budget
             if appState.isBudgetExhausted {
+                let calls = self.appState.apiCallsToday
+                let limit = self.appState.dailyBudgetLimit
+                logger.debug("Skipping: budget exhausted (\(calls)/\(limit))")
                 try? await Task.sleep(for: .seconds(5))
                 continue
             }
 
             // Check backoff (diminishing returns)
             if consecutiveNothingCount >= backoffThreshold && lastAppContext == windowTracker.currentBundleId {
+                let count = self.consecutiveNothingCount
+                logger.debug("Skipping: backoff (consecutive nothing: \(count))")
                 try? await Task.sleep(for: .seconds(backoffInterval))
                 consecutiveNothingCount = 0 // Reset after waiting
                 continue
@@ -117,7 +138,7 @@ final class CaptureScheduler {
 
             // Capture
             guard let image = await screenCapture.capture() else {
-                print("[ScreenPilot] Screenshot capture returned nil — check Screen Recording permission")
+                logger.error("Screenshot capture returned nil — check Screen Recording permission")
                 try? await Task.sleep(for: .seconds(2))
                 continue
             }
@@ -125,6 +146,7 @@ final class CaptureScheduler {
             // Check diff (skip if screen unchanged, unless app changed)
             let appChanged = windowTracker.didAppChange
             if !appChanged, let lastImage = lastSentImage, !imageDiff.isDifferentEnough(image, lastImage, threshold: diffThreshold) {
+                logger.debug("Skipping: screen unchanged")
                 try? await Task.sleep(for: .seconds(2))
                 continue
             }
@@ -140,21 +162,28 @@ final class CaptureScheduler {
             state = .capturing
             lastSentImage = image
             lastSentTimestamp = .now
-            print("[ScreenPilot] Sending screenshot to API (app: \(windowTracker.currentApp), call #\(appState.apiCallsToday + 1))")
+            let appName = self.windowTracker.currentApp
+            let callNum = self.appState.apiCallsToday + 1
+            logger.info("Sending screenshot to API (app: \(appName), call #\(callNum))")
 
             if let handler = analysisHandler {
                 let result = await handler(image, windowTracker.currentApp, windowTracker.currentWindowTitle)
-                appState.apiCallsToday += 1
 
                 if let result {
-                    appState.currentActivity = result.activitySummary
-                    if let nudge = result.nudge {
-                        print("[ScreenPilot] Nudge generated: \(nudge.title)")
-                        appState.addNudge(nudge)
-                        consecutiveNothingCount = 0
+                    if let error = result.error {
+                        appState.lastAPIError = error
                     } else {
-                        consecutiveNothingCount += 1
-                        print("[ScreenPilot] No nudge (consecutive nothing: \(consecutiveNothingCount))")
+                        appState.lastAPIError = nil
+                        appState.apiCallsToday += 1
+                        appState.currentActivity = result.activitySummary
+                        if let nudge = result.nudge {
+                            print("[ScreenPilot] Nudge generated: \(nudge.title)")
+                            appState.addNudge(nudge)
+                            consecutiveNothingCount = 0
+                        } else {
+                            consecutiveNothingCount += 1
+                            print("[ScreenPilot] No nudge (consecutive nothing: \(consecutiveNothingCount))")
+                        }
                     }
                 } else {
                     print("[ScreenPilot] Analysis returned nil (API error?)")
