@@ -23,6 +23,13 @@ actor LLMClient {
         let model: String
     }
 
+    struct EnrichmentRequest {
+        let nudge: Nudge
+        let activitySummary: String
+        let memoryContext: [String]
+        let model: String
+    }
+
     init() {
         self.session = URLSession.shared
     }
@@ -186,6 +193,78 @@ actor LLMClient {
         }
 
         return LLMResponse(rawText: text)
+    }
+
+    func enrich(_ request: EnrichmentRequest) async throws -> Nudge {
+        guard let apiKey = await MainActor.run(body: { KeychainHelper.loadAPIKey() }),
+              !apiKey.isEmpty else {
+            throw LLMError.missingAPIKey
+        }
+
+        var userParts: [String] = [
+            "Current activity: \(request.activitySummary)",
+            "",
+            "Your original suggestion:",
+            "Title: \(request.nudge.title)",
+            "Body: \(request.nudge.body)",
+            "",
+            "Relevant past experience from user's history:",
+            request.memoryContext.joined(separator: "\n"),
+        ]
+
+        let body: [String: Any] = [
+            "model": request.model,
+            "max_tokens": 1024,
+            "system": AnalysisPrompts.enrichment,
+            "messages": [
+                [
+                    "role": "user",
+                    "content": userParts.joined(separator: "\n"),
+                ]
+            ],
+        ]
+
+        var urlRequest = URLRequest(url: apiEndpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue(apiKey, forHTTPHeaderField: "x-api-key")
+        urlRequest.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "content-type")
+        urlRequest.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: urlRequest)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw LLMError.invalidResponse
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let errorBody = String(data: data, encoding: .utf8) ?? "unknown"
+            throw LLMError.apiError(statusCode: httpResponse.statusCode, message: errorBody)
+        }
+
+        let apiResponse = try JSONDecoder().decode(AnthropicResponse.self, from: data)
+
+        guard let textContent = apiResponse.content.first(where: { $0.type == "text" }),
+              let text = textContent.text else {
+            throw LLMError.noTextContent
+        }
+
+        // Parse the enriched nudge; if enrichment says "none", return original
+        guard let parsed = NudgeParser.parse(text), let enrichedNudge = parsed.nudge else {
+            return request.nudge
+        }
+
+        // Preserve original nudge's id and timestamp
+        return Nudge(
+            id: request.nudge.id,
+            timestamp: request.nudge.timestamp,
+            type: enrichedNudge.type,
+            title: enrichedNudge.title,
+            body: enrichedNudge.body,
+            activitySummary: request.nudge.activitySummary,
+            feedback: nil,
+            isRead: false
+        )
     }
 
     // MARK: - Image Encoding

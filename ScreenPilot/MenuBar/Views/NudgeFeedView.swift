@@ -24,6 +24,7 @@ struct NudgeFeedView: View {
                     ) { question in
                         appState.queryNudge(id: nudge.id, question: question)
                     }
+                    .id(nudge.id)
                 }
             }
             .padding(.horizontal, 14)

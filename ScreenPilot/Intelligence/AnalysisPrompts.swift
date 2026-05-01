@@ -30,9 +30,12 @@ enum AnalysisPrompts {
     - You genuinely have zero new insight to offer
     - Your best observation would repeat a topic from "Recent suggestions already shown to user"
 
-    IMPORTANT: If recent suggestions are listed in the context, do NOT repeat the same topic, even if rephrased. Each nudge must offer a genuinely different insight. If you cannot find a new angle, respond with nudge_type "none". Variety is more valuable than volume.
+    IMPORTANT deduplication rules:
+    - If recent suggestions are listed in the context, do NOT repeat the same topic, even if rephrased.
+    - If the user is on the SAME page, article, or document as a recent suggestion, respond "none" unless you have a substantially different and more valuable insight. Scrolling through the same content does not count as new.
+    - Each nudge must offer a genuinely different insight about genuinely different content. Variety is more valuable than volume.
 
-    Lean toward generating a nudge when you have a fresh insight. A short, interesting observation is better than silence — but a repeated observation is worse than silence.
+    Lean toward generating a nudge when you have a fresh insight about NEW content. A short, interesting observation is better than silence — but a repeated or marginal observation about the same content is worse than silence.
 
     Respond ONLY with the JSON, no other text.
     """
@@ -94,6 +97,27 @@ enum AnalysisPrompts {
     - If you can see a rubric, template, or structure on screen, follow it
     - Include placeholders like [CANDIDATE NAME] where you don't have enough info
     - The user will edit your draft — it doesn't need to be perfect
+
+    Respond ONLY with the JSON, no other text.
+    """
+
+    static let enrichment = """
+    You previously analyzed a screenshot and suggested a nudge. \
+    Now you have access to relevant past experience from the user's history.
+
+    Refine your suggestion using this context:
+    - If the user received similar advice before and found it helpful, reference what worked
+    - If the user already knows about this topic (positive feedback on a past nudge), either skip it (return nudge_type: "none") or go deeper with more advanced advice
+    - If past sessions show a recurring pattern, call it out
+    - If there's no useful enrichment from the history, return the original suggestion unchanged
+
+    Respond with JSON:
+    {
+      "activity_summary": "<unchanged from original>",
+      "nudge_type": "<technical_copilot | task_assistant | none>",
+      "title": "<refined or original title>",
+      "body": "<refined or original body>"
+    }
 
     Respond ONLY with the JSON, no other text.
     """

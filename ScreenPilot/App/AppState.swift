@@ -1,5 +1,8 @@
 import Foundation
 import CoreGraphics
+import os.log
+
+private let stateLogger = Logger(subsystem: "com.screenpilot", category: "AppState")
 
 @Observable
 @MainActor
@@ -41,6 +44,8 @@ final class AppState {
             followUps.removeValue(forKey: removed.id)
         }
         unreadCount += 1
+        stateLogger.warning("addNudge: showing overlay for \(nudge.title)")
+        NudgeOverlayPanel.shared.show(nudge: nudge)
     }
 
     private func isSimilar(_ a: Nudge, _ b: Nudge) -> Bool {

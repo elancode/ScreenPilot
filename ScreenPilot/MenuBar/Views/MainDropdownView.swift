@@ -78,13 +78,25 @@ struct MainDropdownView: View {
     // MARK: - Tab Content
 
     private var copilotView: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                NudgeFeedView(appState: appState)
-
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    NudgeFeedView(appState: appState)
                 }
+            }
+            .frame(maxHeight: 380)
+            .onAppear { scrollToTop(proxy) }
+            .onChange(of: appState.nudges.first?.id) { _, _ in scrollToTop(proxy) }
         }
-        .frame(maxHeight: 380)
+    }
+
+    private func scrollToTop(_ proxy: ScrollViewProxy) {
+        guard let first = appState.nudges.first else { return }
+        DispatchQueue.main.async {
+            withAnimation(.none) {
+                proxy.scrollTo(first.id, anchor: .top)
+            }
+        }
     }
 
 }

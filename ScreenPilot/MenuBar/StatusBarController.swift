@@ -36,12 +36,19 @@ final class StatusBarController {
         self.popover = popover
     }
 
+    func showPopover() {
+        guard let popover, let button = statusItem?.button, !popover.isShown else { return }
+        popover.contentViewController = NSHostingController(rootView: MainDropdownView(appState: appState))
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+
     @objc private func togglePopover() {
         guard let popover, let button = statusItem?.button else { return }
 
         if popover.isShown {
             popover.performClose(nil)
         } else {
+            popover.contentViewController = NSHostingController(rootView: MainDropdownView(appState: appState))
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
     }

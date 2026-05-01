@@ -5,11 +5,13 @@ actor AnalysisRouter {
     private let llmClient: LLMClient
     private let contextWindow: ContextWindow
     private let appState: AppState
+    private let memoryManager: MemoryManager?
 
-    init(llmClient: LLMClient, contextWindow: ContextWindow, appState: AppState) {
+    init(llmClient: LLMClient, contextWindow: ContextWindow, appState: AppState, memoryManager: MemoryManager? = nil) {
         self.llmClient = llmClient
         self.contextWindow = contextWindow
         self.appState = appState
+        self.memoryManager = memoryManager
     }
 
     func analyze(image: CGImage, appName: String, windowTitle: String) async -> AnalysisResult? {
@@ -17,6 +19,7 @@ actor AnalysisRouter {
         let recentNudges = await contextWindow.recentNudges(count: 10)
         let model = await MainActor.run { appState.selectedModel }
 
+        // === Pass 1: Screenshot analysis ===
         let request = LLMClient.AnalysisRequest(
             image: image,
             systemPrompt: AnalysisPrompts.combined,
@@ -34,21 +37,52 @@ actor AnalysisRouter {
                 return AnalysisResult(activitySummary: "Unable to parse response", nudge: nil)
             }
 
-            await contextWindow.append(entry: ActivityEntry(
+            let entry = ActivityEntry(
                 timestamp: .now,
                 app: appName,
                 bundleId: nil,
                 windowTitle: windowTitle,
                 summary: parsed.activitySummary
-            ))
+            )
+
+            await contextWindow.append(entry: entry)
 
             if let nudge = parsed.nudge {
                 await contextWindow.appendNudge(title: nudge.title, body: nudge.body)
             }
 
+            // === Memory: query + conditional pass 2 ===
+            var finalNudge = parsed.nudge
+
+            if let nudge = parsed.nudge, let memoryManager, await memoryManager.isEnabled {
+                let memory = await memoryManager.retrieveMemory(
+                    activitySummary: parsed.activitySummary
+                )
+
+                if !memory.isEmpty {
+                    let enriched = try? await callWithBackoff { [llmClient] in
+                        try await llmClient.enrich(LLMClient.EnrichmentRequest(
+                            nudge: nudge,
+                            activitySummary: parsed.activitySummary,
+                            memoryContext: memory.entries,
+                            model: model
+                        ))
+                    }
+                    if let enriched {
+                        finalNudge = enriched
+                    }
+                }
+            }
+
+            // Record to long-term memory
+            await memoryManager?.recordActivity(entry)
+            if let nudge = finalNudge {
+                await memoryManager?.recordNudge(nudge)
+            }
+
             return AnalysisResult(
                 activitySummary: parsed.activitySummary,
-                nudge: parsed.nudge
+                nudge: finalNudge
             )
         } catch {
             print("[ScreenPilot] Analysis error: \(error.localizedDescription)")

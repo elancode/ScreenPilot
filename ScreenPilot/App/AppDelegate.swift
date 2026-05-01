@@ -11,11 +11,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let llmClient = LLMClient()
     private var contextWindow = ContextWindow()
     private var analysisRouter: AnalysisRouter?
+    private var memoryManager: MemoryManager?
     private var sleepObserver: NSObjectProtocol?
     private var wakeObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         statusBarController = StatusBarController(appState: appState)
+        NudgeOverlayPanel.shared.onTapped = { [weak self] in
+            self?.statusBarController?.showPopover()
+        }
 
         let monitor = InputMonitor()
         let tracker = WindowTracker()
@@ -28,10 +32,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             appState: appState
         )
 
+        let memory = MemoryManager()
+        memoryManager = memory
+
         analysisRouter = AnalysisRouter(
             llmClient: llmClient,
             contextWindow: contextWindow,
-            appState: appState
+            appState: appState,
+            memoryManager: memory
         )
 
         scheduler.analysisHandler = { [weak self] image, appName, windowTitle in
@@ -67,11 +75,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         scheduler.start()
 
         // Open database
-        Task { [appState] in
+        Task { [appState, memory] in
             do {
                 try await Database.shared.open()
                 try await Database.shared.deleteOldRecords()
                 await appState.loadSettings()
+                await memory.initialize()
             } catch {
                 print("[ScreenPilot] Database error: \(error.localizedDescription)")
             }
@@ -101,7 +110,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        Task {
+        Task { [memoryManager] in
+            await memoryManager?.shutdown()
             await Database.shared.close()
         }
     }

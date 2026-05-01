@@ -27,19 +27,21 @@ struct NudgeCardView: View {
             }
 
             // Title
-            Text(nudge.title)
+            Text(markdownString(nudge.title))
                 .font(.system(size: 15, weight: .semibold))
                 .lineLimit(2)
+                .textSelection(.enabled)
 
             // Body
-            Text(nudge.body)
+            Text(markdownString(nudge.body))
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .lineLimit(isExpanded ? nil : 6)
                 .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
                 .background(
                     GeometryReader { visibleGeometry in
-                        Text(nudge.body)
+                        Text(markdownString(nudge.body))
                             .font(.system(size: 13))
                             .fixedSize(horizontal: false, vertical: true)
                             .lineLimit(nil)
@@ -139,7 +141,7 @@ struct NudgeCardView: View {
                         Image(systemName: "sparkles")
                             .font(.caption2)
                             .foregroundStyle(.purple)
-                        Text(followUp.answer)
+                        Text(markdownString(followUp.answer))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
@@ -218,4 +220,8 @@ private struct TruncationPreferenceKey: PreferenceKey {
     static func reduce(value: inout Bool, nextValue: () -> Bool) {
         value = value || nextValue()
     }
+}
+
+func markdownString(_ text: String) -> AttributedString {
+    (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
 }
